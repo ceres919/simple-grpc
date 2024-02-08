@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package eventmanager;
+
+option go_package = "github.com/ceres919/simple-grpc/pkg/eventmanager";
+
+service Events {
+  rpc MakeEvent (MakeEventRequest) returns (MakeEventResponse) {}
+  rpc GetEvent (GetEventRequest) returns (GetEventResponse) {}
+  rpc DeleteEvent (DeleteEventRequest) returns (DeleteEventResponse) {}
+  rpc GetEvents (GetEventsRequest) returns (stream GetEventsResponse) {}
+}
+
+message MakeEventRequest {
+  int64 senderId = 1;
+  int64 time = 2;
+  string name = 3;
+}
+
+message MakeEventResponse {
+  int64 eventId = 1;
+}
+
+message GetEventRequest {
+  int64 senderId = 1;
+  int64 eventId = 2;
+}
+
+message GetEventResponse {
+  int64 senderId = 1;
+  int64 eventId = 2;
+  int64 time = 3;
+  string name = 4;
+}
+
+message DeleteEventRequest {
+  int64 senderId = 1;
+  int64 eventId = 2;
+}
+
+message DeleteEventResponse {
+  int64 eventId = 1;
+}
+
+message GetEventsRequest {
+  int64 senderId = 1;
+  int64 from_time = 2;
+  int64 to_time = 3;
+}
+
+message GetEventsResponse {
+  int64 senderId = 1;
+  int64 eventId = 2;
+  int64 time = 3;
+  string name = 4;
+}
