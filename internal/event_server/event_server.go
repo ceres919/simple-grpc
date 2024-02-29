@@ -40,9 +40,6 @@ continueLoop:
 			t1 := time.Now().UTC()
 			t2 := time.UnixMilli(event.Time).UTC()
 			timeDuration := t2.Sub(t1)
-			if timeDuration < 0 {
-				return
-			}
 			timer := time.NewTimer(timeDuration)
 
 			select {
@@ -81,7 +78,7 @@ func (s *Server) MakeEvent(ctx context.Context, req *eventmanager.MakeEventReque
 			if event.Time > item.Time {
 				eventPtr = s.eventsList.InsertAfter(event, e)
 				break
-			} else if e == s.eventsList.Front() && item.Time > event.Time {
+			} else if e == s.eventsList.Front() && item.Time >= event.Time {
 				eventPtr = s.eventsList.InsertBefore(event, e)
 				s.listChangingChannel <- true
 				break

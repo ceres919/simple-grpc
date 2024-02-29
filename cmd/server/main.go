@@ -28,7 +28,7 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	reflection.Register(s) ///убрать???
+	reflection.Register(s)
 	server := eventserv.NewServerEvent()
 	eventmanager.RegisterEventsServer(s, server)
 

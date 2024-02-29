@@ -10,6 +10,7 @@ import (
 	eventclient "github.com/ceres919/simple-grpc/internal/event_client"
 	eventmanager "github.com/ceres919/simple-grpc/pkg/api/protobuf"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -28,7 +29,7 @@ func main() {
 	flag.Parse()
 
 	destination_port := fmt.Sprintf("%s:%s", destination, port)
-	conn, err := grpc.Dial(destination_port, grpc.WithInsecure()) ///todo
+	conn, err := grpc.Dial(destination_port, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatal(err)
 	}
