@@ -25,36 +25,35 @@ func NewServerEvent() *Server {
 		eventsMap:           make(map[int64]map[int64]*list.Element),
 		eventsList:          list.New(),
 		eventsChannel:       publisherChan,
-		listChangingChannel: make(chan bool),
+		listChangingChannel: make(chan bool, 1),
 	}
 	go serv.timerQueue()
 	return &serv
 }
 
 func (s *Server) timerQueue() {
-continueLoop:
 	for {
-		if s.eventsList.Len() > 0 {
-			eventPtr := s.eventsList.Front()
-			event := eventPtr.Value.(models.Event)
-			t1 := time.Now().UTC()
-			t2 := time.UnixMilli(event.Time).UTC()
-			timeDuration := t2.Sub(t1)
-			timer := time.NewTimer(timeDuration)
+		if s.eventsList.Len() == 0 {
+			<-s.listChangingChannel
+			continue
+		}
+		eventPtr := s.eventsList.Front()
+		event := eventPtr.Value.(models.Event)
+		t1 := time.Now().UTC()
+		t2 := time.UnixMilli(event.Time).UTC()
+		timeDuration := t2.Sub(t1)
+		timer := time.NewTimer(timeDuration)
 
-			select {
+		select {
 
-			case <-timer.C:
-				s.eventsChannel <- event
-				delete(s.eventsMap[event.SenderId], event.EventId)
-				s.eventsList.Remove(eventPtr)
-				continue continueLoop
+		case <-timer.C:
+			s.eventsChannel <- event
+			delete(s.eventsMap[event.SenderId], event.EventId)
+			s.eventsList.Remove(eventPtr)
 
-			case <-s.listChangingChannel:
-				timer.Stop()
-				continue continueLoop
+		case <-s.listChangingChannel:
+			timer.Stop()
 
-			}
 		}
 	}
 }
@@ -63,7 +62,10 @@ func (s *Server) MakeEvent(ctx context.Context, req *eventmanager.MakeEventReque
 	g, _ := uid.NewGenerator(0)
 	event_id, _ := g.Gen()
 
+	//TODO сравнить что быстрее при больших объемах данных
+	//event := &models.Event{SenderId: req.SenderId, EventId: event_id.ToInt(), Time: req.Time, Name: req.Name}
 	event := models.Event{SenderId: req.SenderId, EventId: event_id.ToInt(), Time: req.Time, Name: req.Name}
+
 	var eventPtr *list.Element
 	_, existence := s.eventsMap[req.SenderId]
 
@@ -72,13 +74,14 @@ func (s *Server) MakeEvent(ctx context.Context, req *eventmanager.MakeEventReque
 	}
 	if s.eventsList.Len() == 0 {
 		eventPtr = s.eventsList.PushBack(event)
+		s.listChangingChannel <- true
 	} else {
 		for e := s.eventsList.Back(); e != nil; e = e.Prev() {
-			item := models.Event(e.Value.(models.Event))
-			if event.Time > item.Time {
+			item := e.Value.(models.Event)
+			if event.Time >= item.Time {
 				eventPtr = s.eventsList.InsertAfter(event, e)
 				break
-			} else if e == s.eventsList.Front() && item.Time >= event.Time {
+			} else if e == s.eventsList.Front() && item.Time > event.Time {
 				eventPtr = s.eventsList.InsertBefore(event, e)
 				s.listChangingChannel <- true
 				break
