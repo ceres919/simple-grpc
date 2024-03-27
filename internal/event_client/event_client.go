@@ -41,15 +41,16 @@ func RunEventsClient(sender_id int64, client eventmanager.EventsClient) {
 			{
 				var event_id int64
 				fmt.Scan(&event_id)
-				res, err := client.GetEvent(context.Background(), &eventmanager.GetEventRequest{
+				res, _ := client.GetEvent(context.Background(), &eventmanager.GetEventRequest{
 					SenderId: sender_id,
 					EventId:  event_id,
 				})
-				if err != nil {
-					fmt.Println("NotFound")
+				if res == nil {
+					fmt.Println("No such event")
+				} else {
+					timeEvent := time.UnixMilli(res.Time).Local().Format(time.DateTime)
+					fmt.Printf("Event {\n\tsenderId: %d\n\teventId: %d\n\ttime: %s\n\tname: %s\n}\n", res.SenderId, res.EventId, timeEvent, res.Name)
 				}
-				timeEvent := time.UnixMilli(res.Time).Local().Format(time.DateTime)
-				fmt.Printf("Event {\n\tsenderId: %d\n\teventId: %d\n\ttime: %s\n\tname: %s\n}\n", res.SenderId, res.EventId, timeEvent, res.Name)
 			}
 		case "GetEvents":
 			{
@@ -60,22 +61,22 @@ func RunEventsClient(sender_id int64, client eventmanager.EventsClient) {
 					toTime   string
 				)
 				fmt.Scan(&fromDate, &fromTime, &toDate, &toTime)
-				startTime, _ := time.Parse(time.DateTime, fmt.Sprintf("%s %s", fromDate, fromTime))
-				endTime, _ := time.Parse(time.DateTime, fmt.Sprintf("%s %s", toDate, toTime))
+				startTime, _ := time.ParseInLocation(time.DateTime, fmt.Sprintf("%s %s", fromDate, fromTime), time.Local)
+				endTime, _ := time.ParseInLocation(time.DateTime, fmt.Sprintf("%s %s", toDate, toTime), time.Local)
 
 				stream, err := client.GetEvents(context.Background(), &eventmanager.GetEventsRequest{
 					SenderId: sender_id,
-					FromTime: startTime.UnixMilli(),
-					ToTime:   endTime.UnixMilli(),
+					FromTime: startTime.UTC().UnixMilli(),
+					ToTime:   endTime.UTC().UnixMilli(),
 				})
 				if err != nil {
-					fmt.Println("NotFound")
+					fmt.Println("No such events")
 				} else {
 					for i := 0; ; i++ {
 						res, err := stream.Recv()
 						if err == io.EOF {
 							if i == 0 {
-								fmt.Println("Not found")
+								fmt.Println("No such events")
 							}
 							break
 						}
@@ -93,7 +94,7 @@ func RunEventsClient(sender_id int64, client eventmanager.EventsClient) {
 					EventId:  event_id,
 				})
 				if err != nil {
-					fmt.Println("NotFound")
+					fmt.Println("Not Found")
 				}
 				fmt.Println("eventId: ", res.EventId)
 			}

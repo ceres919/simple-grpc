@@ -3,7 +3,10 @@ package eventserver
 import (
 	"container/list"
 	"context"
+	"sync"
 	"time"
+
+	"errors"
 
 	"github.com/ceres919/simple-grpc/internal/models"
 	eventmanager "github.com/ceres919/simple-grpc/pkg/api/protobuf"
@@ -14,12 +17,13 @@ type Server struct {
 	eventmanager.UnimplementedEventsServer
 	eventsMap           map[int64]map[int64]*list.Element
 	eventsList          *list.List
-	eventsChannel       chan models.Event
+	eventsChannel       chan *models.Event
 	listChangingChannel chan bool
+	mut                 sync.RWMutex
 }
 
-func NewServerEvent() *Server {
-	publisherChan := make(chan models.Event, 1)
+func NewServerEvent(events ...*eventmanager.MakeEventRequest) *Server {
+	publisherChan := make(chan *models.Event, 1)
 	publish(publisherChan)
 	serv := Server{
 		eventsMap:           make(map[int64]map[int64]*list.Element),
@@ -27,29 +31,61 @@ func NewServerEvent() *Server {
 		eventsChannel:       publisherChan,
 		listChangingChannel: make(chan bool, 1),
 	}
+
+	// TODO добавить дополнительный массив ивентов для тестирования?
+	// for _, event := range events {
+
+	// }
 	go serv.timerQueue()
 	return &serv
 }
 
+func (s *Server) passedEvents(currentTime time.Time) {
+	for e := s.eventsList.Front(); e != nil; e = e.Next() {
+		event := e.Value.(*models.Event)
+		eTime := time.UnixMilli(event.Time).UTC()
+		timeDuration := eTime.Sub(currentTime)
+		if timeDuration <= 0 {
+			s.eventsChannel <- event
+			s.mut.Lock()
+			delete(s.eventsMap[event.SenderId], event.EventId)
+			s.eventsList.Remove(e)
+			s.mut.Unlock()
+			continue
+		}
+		return
+	}
+}
+
 func (s *Server) timerQueue() {
 	for {
+
 		if s.eventsList.Len() == 0 {
 			<-s.listChangingChannel
 			continue
 		}
+
 		eventPtr := s.eventsList.Front()
-		event := eventPtr.Value.(models.Event)
+		event := eventPtr.Value.(*models.Event)
 		t1 := time.Now().UTC()
 		t2 := time.UnixMilli(event.Time).UTC()
 		timeDuration := t2.Sub(t1)
-		timer := time.NewTimer(timeDuration)
+		var timer *time.Timer
+		if timeDuration <= 0 {
+			s.passedEvents(t1)
+			continue
+		} else {
+			timer = time.NewTimer(timeDuration)
+		}
 
 		select {
 
 		case <-timer.C:
 			s.eventsChannel <- event
+			s.mut.Lock()
 			delete(s.eventsMap[event.SenderId], event.EventId)
 			s.eventsList.Remove(eventPtr)
+			s.mut.Unlock()
 
 		case <-s.listChangingChannel:
 			timer.Stop()
@@ -59,16 +95,19 @@ func (s *Server) timerQueue() {
 }
 
 func (s *Server) MakeEvent(ctx context.Context, req *eventmanager.MakeEventRequest) (*eventmanager.MakeEventResponse, error) {
+
 	g, _ := uid.NewGenerator(0)
 	event_id, _ := g.Gen()
 
-	//TODO сравнить что быстрее при больших объемах данных
-	//event := &models.Event{SenderId: req.SenderId, EventId: event_id.ToInt(), Time: req.Time, Name: req.Name}
-	event := models.Event{SenderId: req.SenderId, EventId: event_id.ToInt(), Time: req.Time, Name: req.Name}
+	event := &models.Event{SenderId: req.SenderId, EventId: event_id.ToInt(), Time: req.Time, Name: req.Name}
 
 	var eventPtr *list.Element
-	_, existence := s.eventsMap[req.SenderId]
 
+	s.mut.RLock()
+	_, existence := s.eventsMap[req.SenderId]
+	s.mut.RUnlock()
+	s.mut.Lock()
+	defer s.mut.Unlock()
 	if !existence {
 		s.eventsMap[req.SenderId] = make(map[int64]*list.Element)
 	}
@@ -77,7 +116,7 @@ func (s *Server) MakeEvent(ctx context.Context, req *eventmanager.MakeEventReque
 		s.listChangingChannel <- true
 	} else {
 		for e := s.eventsList.Back(); e != nil; e = e.Prev() {
-			item := e.Value.(models.Event)
+			item := e.Value.(*models.Event)
 			if event.Time >= item.Time {
 				eventPtr = s.eventsList.InsertAfter(event, e)
 				break
@@ -95,41 +134,60 @@ func (s *Server) MakeEvent(ctx context.Context, req *eventmanager.MakeEventReque
 }
 
 func (s *Server) GetEvent(ctx context.Context, req *eventmanager.GetEventRequest) (*eventmanager.GetEventResponse, error) {
-	eventPtr, existence := s.eventsMap[req.SenderId][req.EventId]
-	event := eventPtr.Value.(models.Event)
-	if existence {
-		return &eventmanager.GetEventResponse{
-			SenderId: event.SenderId,
-			EventId:  event.EventId,
-			Time:     event.Time,
-			Name:     event.Name,
-		}, nil
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	_, exist := s.eventsMap[req.SenderId]
+	if exist {
+		eventPtr, existence := s.eventsMap[req.SenderId][req.EventId]
+		if existence {
+			event := eventPtr.Value.(*models.Event)
+			return &eventmanager.GetEventResponse{
+				SenderId: event.SenderId,
+				EventId:  event.EventId,
+				Time:     event.Time,
+				Name:     event.Name,
+			}, nil
+		} else {
+			return nil, errors.New("not found")
+		}
+	} else {
+		return nil, errors.New("not found")
 	}
-	return nil, nil
 }
 
 func (s *Server) GetEvents(req *eventmanager.GetEventsRequest, stream eventmanager.Events_GetEventsServer) error {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	found := false
 	senderID := req.SenderId
-	for _, eventsByClient := range s.eventsMap {
-		for _, eventPtr := range eventsByClient {
-			event := eventPtr.Value.(models.Event)
-			if event.SenderId == senderID {
-				if req.FromTime < event.Time && event.Time < req.ToTime {
-					if err := stream.Send(ArchiveEvent(event)); err != nil {
-						return err
-					}
-				} else {
-					return nil
+	_, exist := s.eventsMap[senderID]
+	if exist {
+		for _, eventPtr := range s.eventsMap[senderID] {
+			event := eventPtr.Value.(*models.Event)
+			if req.FromTime <= event.Time && event.Time <= req.ToTime {
+				if err := stream.Send(ArchiveEvent(*event)); err != nil {
+					return err
 				}
-			} else {
-				return nil
+				found = true
 			}
 		}
+		if !found {
+			return errors.New("not found")
+		}
+	} else {
+		return errors.New("not found")
 	}
 	return nil
 }
 
 func (s *Server) DeleteEvent(ctx context.Context, req *eventmanager.DeleteEventRequest) (*eventmanager.DeleteEventResponse, error) {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+	_, existence := s.eventsMap[req.SenderId]
+	if !existence {
+		return nil, nil
+	}
 	eventPtr, existence := s.eventsMap[req.SenderId][req.EventId]
 	if existence {
 		delete(s.eventsMap[req.SenderId], req.EventId)
@@ -143,6 +201,17 @@ func (s *Server) DeleteEvent(ctx context.Context, req *eventmanager.DeleteEventR
 		}, nil
 	}
 	return nil, nil
+}
+
+func (s *Server) CheckSenderEventExistence(sid int64, eid int64) bool {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	_, exist := s.eventsMap[sid]
+	if !exist {
+		return false
+	}
+	_, exist = s.eventsMap[sid][eid]
+	return exist
 }
 
 func ArchiveEvent(event models.Event) *eventmanager.GetEventsResponse {

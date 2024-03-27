@@ -11,7 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func publish(publisherChannel chan models.Event) {
+func publish(publisherChannel chan *models.Event) {
 	const (
 		exchange    = "event.ex"
 		reconnDelay = 5
@@ -102,7 +102,7 @@ func publish(publisherChannel chan models.Event) {
 		for {
 			event := <-publisherChannel
 
-			body, err := proto.Marshal(ArchiveEvent(event))
+			body, err := proto.Marshal(ArchiveEvent(*event))
 			if err != nil {
 				log.Fatalf("Unable to marshal event. Error: %s", err)
 			}
