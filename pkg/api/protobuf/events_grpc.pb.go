@@ -22,9 +22,9 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type EventsClient interface {
-	MakeEvent(ctx context.Context, in *MakeEventRequest, opts ...grpc.CallOption) (*MakeEventResponse, error)
-	GetEvent(ctx context.Context, in *GetEventRequest, opts ...grpc.CallOption) (*GetEventResponse, error)
-	DeleteEvent(ctx context.Context, in *DeleteEventRequest, opts ...grpc.CallOption) (*DeleteEventResponse, error)
+	MakeEvent(ctx context.Context, in *MakeEventRequest, opts ...grpc.CallOption) (*EventIdResponse, error)
+	GetEvent(ctx context.Context, in *GetEventRequest, opts ...grpc.CallOption) (*EventResponse, error)
+	DeleteEvent(ctx context.Context, in *DeleteEventRequest, opts ...grpc.CallOption) (*EventIdResponse, error)
 	GetEvents(ctx context.Context, in *GetEventsRequest, opts ...grpc.CallOption) (Events_GetEventsClient, error)
 }
 
@@ -36,8 +36,8 @@ func NewEventsClient(cc grpc.ClientConnInterface) EventsClient {
 	return &eventsClient{cc}
 }
 
-func (c *eventsClient) MakeEvent(ctx context.Context, in *MakeEventRequest, opts ...grpc.CallOption) (*MakeEventResponse, error) {
-	out := new(MakeEventResponse)
+func (c *eventsClient) MakeEvent(ctx context.Context, in *MakeEventRequest, opts ...grpc.CallOption) (*EventIdResponse, error) {
+	out := new(EventIdResponse)
 	err := c.cc.Invoke(ctx, "/eventmanager.Events/MakeEvent", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -45,8 +45,8 @@ func (c *eventsClient) MakeEvent(ctx context.Context, in *MakeEventRequest, opts
 	return out, nil
 }
 
-func (c *eventsClient) GetEvent(ctx context.Context, in *GetEventRequest, opts ...grpc.CallOption) (*GetEventResponse, error) {
-	out := new(GetEventResponse)
+func (c *eventsClient) GetEvent(ctx context.Context, in *GetEventRequest, opts ...grpc.CallOption) (*EventResponse, error) {
+	out := new(EventResponse)
 	err := c.cc.Invoke(ctx, "/eventmanager.Events/GetEvent", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -54,8 +54,8 @@ func (c *eventsClient) GetEvent(ctx context.Context, in *GetEventRequest, opts .
 	return out, nil
 }
 
-func (c *eventsClient) DeleteEvent(ctx context.Context, in *DeleteEventRequest, opts ...grpc.CallOption) (*DeleteEventResponse, error) {
-	out := new(DeleteEventResponse)
+func (c *eventsClient) DeleteEvent(ctx context.Context, in *DeleteEventRequest, opts ...grpc.CallOption) (*EventIdResponse, error) {
+	out := new(EventIdResponse)
 	err := c.cc.Invoke(ctx, "/eventmanager.Events/DeleteEvent", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func (c *eventsClient) GetEvents(ctx context.Context, in *GetEventsRequest, opts
 }
 
 type Events_GetEventsClient interface {
-	Recv() (*GetEventsResponse, error)
+	Recv() (*EventResponse, error)
 	grpc.ClientStream
 }
 
@@ -87,8 +87,8 @@ type eventsGetEventsClient struct {
 	grpc.ClientStream
 }
 
-func (x *eventsGetEventsClient) Recv() (*GetEventsResponse, error) {
-	m := new(GetEventsResponse)
+func (x *eventsGetEventsClient) Recv() (*EventResponse, error) {
+	m := new(EventResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -99,9 +99,9 @@ func (x *eventsGetEventsClient) Recv() (*GetEventsResponse, error) {
 // All implementations must embed UnimplementedEventsServer
 // for forward compatibility
 type EventsServer interface {
-	MakeEvent(context.Context, *MakeEventRequest) (*MakeEventResponse, error)
-	GetEvent(context.Context, *GetEventRequest) (*GetEventResponse, error)
-	DeleteEvent(context.Context, *DeleteEventRequest) (*DeleteEventResponse, error)
+	MakeEvent(context.Context, *MakeEventRequest) (*EventIdResponse, error)
+	GetEvent(context.Context, *GetEventRequest) (*EventResponse, error)
+	DeleteEvent(context.Context, *DeleteEventRequest) (*EventIdResponse, error)
 	GetEvents(*GetEventsRequest, Events_GetEventsServer) error
 	mustEmbedUnimplementedEventsServer()
 }
@@ -110,13 +110,13 @@ type EventsServer interface {
 type UnimplementedEventsServer struct {
 }
 
-func (UnimplementedEventsServer) MakeEvent(context.Context, *MakeEventRequest) (*MakeEventResponse, error) {
+func (UnimplementedEventsServer) MakeEvent(context.Context, *MakeEventRequest) (*EventIdResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MakeEvent not implemented")
 }
-func (UnimplementedEventsServer) GetEvent(context.Context, *GetEventRequest) (*GetEventResponse, error) {
+func (UnimplementedEventsServer) GetEvent(context.Context, *GetEventRequest) (*EventResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetEvent not implemented")
 }
-func (UnimplementedEventsServer) DeleteEvent(context.Context, *DeleteEventRequest) (*DeleteEventResponse, error) {
+func (UnimplementedEventsServer) DeleteEvent(context.Context, *DeleteEventRequest) (*EventIdResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteEvent not implemented")
 }
 func (UnimplementedEventsServer) GetEvents(*GetEventsRequest, Events_GetEventsServer) error {
@@ -198,7 +198,7 @@ func _Events_GetEvents_Handler(srv interface{}, stream grpc.ServerStream) error 
 }
 
 type Events_GetEventsServer interface {
-	Send(*GetEventsResponse) error
+	Send(*EventResponse) error
 	grpc.ServerStream
 }
 
@@ -206,7 +206,7 @@ type eventsGetEventsServer struct {
 	grpc.ServerStream
 }
 
-func (x *eventsGetEventsServer) Send(m *GetEventsResponse) error {
+func (x *eventsGetEventsServer) Send(m *EventResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 

@@ -23,7 +23,7 @@ type Server struct {
 }
 
 func NewServerEvent(events ...*eventmanager.MakeEventRequest) *Server {
-	publisherChan := make(chan *models.Event, 1)
+	publisherChan := make(chan *models.Event, 10000)
 	publish(publisherChan)
 	serv := Server{
 		eventsMap:           make(map[int64]map[int64]*list.Element),
@@ -33,23 +33,25 @@ func NewServerEvent(events ...*eventmanager.MakeEventRequest) *Server {
 	}
 
 	// TODO добавить дополнительный массив ивентов для тестирования?
-	// for _, event := range events {
-
-	// }
+	for _, event := range events {
+		serv.MakeEvent(context.Background(), event)
+	}
 	go serv.timerQueue()
 	return &serv
 }
 
 func (s *Server) passedEvents(currentTime time.Time) {
-	for e := s.eventsList.Front(); e != nil; e = e.Next() {
+	for e := s.eventsList.Front(); e != nil; {
 		event := e.Value.(*models.Event)
 		eTime := time.UnixMilli(event.Time).UTC()
 		timeDuration := eTime.Sub(currentTime)
 		if timeDuration <= 0 {
 			s.eventsChannel <- event
 			s.mut.Lock()
+			next := e.Next()
 			delete(s.eventsMap[event.SenderId], event.EventId)
 			s.eventsList.Remove(e)
+			e = next
 			s.mut.Unlock()
 			continue
 		}
@@ -70,16 +72,14 @@ func (s *Server) timerQueue() {
 		t1 := time.Now().UTC()
 		t2 := time.UnixMilli(event.Time).UTC()
 		timeDuration := t2.Sub(t1)
-		var timer *time.Timer
+
 		if timeDuration <= 0 {
 			s.passedEvents(t1)
 			continue
-		} else {
-			timer = time.NewTimer(timeDuration)
 		}
+		timer := time.NewTimer(timeDuration)
 
 		select {
-
 		case <-timer.C:
 			s.eventsChannel <- event
 			s.mut.Lock()
@@ -94,20 +94,15 @@ func (s *Server) timerQueue() {
 	}
 }
 
-func (s *Server) MakeEvent(ctx context.Context, req *eventmanager.MakeEventRequest) (*eventmanager.MakeEventResponse, error) {
-
-	g, _ := uid.NewGenerator(0)
-	event_id, _ := g.Gen()
-
-	event := &models.Event{SenderId: req.SenderId, EventId: event_id.ToInt(), Time: req.Time, Name: req.Name}
-
-	var eventPtr *list.Element
-
-	s.mut.RLock()
-	_, existence := s.eventsMap[req.SenderId]
-	s.mut.RUnlock()
+func (s *Server) MakeEvent(ctx context.Context, req *eventmanager.MakeEventRequest) (*eventmanager.EventIdResponse, error) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
+	g, _ := uid.NewGenerator(0)
+	event_id, _ := g.Gen()
+	event := &models.Event{SenderId: req.SenderId, EventId: event_id.ToInt(), Time: req.Time, Name: req.Name}
+	var eventPtr *list.Element
+	_, existence := s.eventsMap[req.SenderId]
+
 	if !existence {
 		s.eventsMap[req.SenderId] = make(map[int64]*list.Element)
 	}
@@ -128,12 +123,12 @@ func (s *Server) MakeEvent(ctx context.Context, req *eventmanager.MakeEventReque
 		}
 	}
 	s.eventsMap[event.SenderId][event.EventId] = eventPtr
-	return &eventmanager.MakeEventResponse{
+	return &eventmanager.EventIdResponse{
 		EventId: event_id.ToInt(),
 	}, nil
 }
 
-func (s *Server) GetEvent(ctx context.Context, req *eventmanager.GetEventRequest) (*eventmanager.GetEventResponse, error) {
+func (s *Server) GetEvent(ctx context.Context, req *eventmanager.GetEventRequest) (*eventmanager.EventResponse, error) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
 	_, exist := s.eventsMap[req.SenderId]
@@ -141,7 +136,7 @@ func (s *Server) GetEvent(ctx context.Context, req *eventmanager.GetEventRequest
 		eventPtr, existence := s.eventsMap[req.SenderId][req.EventId]
 		if existence {
 			event := eventPtr.Value.(*models.Event)
-			return &eventmanager.GetEventResponse{
+			return &eventmanager.EventResponse{
 				SenderId: event.SenderId,
 				EventId:  event.EventId,
 				Time:     event.Time,
@@ -165,28 +160,31 @@ func (s *Server) GetEvents(req *eventmanager.GetEventsRequest, stream eventmanag
 		for _, eventPtr := range s.eventsMap[senderID] {
 			event := eventPtr.Value.(*models.Event)
 			if req.FromTime <= event.Time && event.Time <= req.ToTime {
+				found = true
 				if err := stream.Send(ArchiveEvent(*event)); err != nil {
 					return err
 				}
-				found = true
 			}
 		}
 		if !found {
 			return errors.New("not found")
 		}
 	} else {
-		return errors.New("not found")
+		return errors.New("not found senders events")
 	}
 	return nil
 }
 
-func (s *Server) DeleteEvent(ctx context.Context, req *eventmanager.DeleteEventRequest) (*eventmanager.DeleteEventResponse, error) {
+func (s *Server) DeleteEvent(
+	ctx context.Context,
+	req *eventmanager.DeleteEventRequest,
+) (*eventmanager.EventIdResponse, error) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
 
 	_, existence := s.eventsMap[req.SenderId]
 	if !existence {
-		return nil, nil
+		return nil, errors.New("not found")
 	}
 	eventPtr, existence := s.eventsMap[req.SenderId][req.EventId]
 	if existence {
@@ -196,11 +194,11 @@ func (s *Server) DeleteEvent(ctx context.Context, req *eventmanager.DeleteEventR
 		if eventPtr.Value == frontItem {
 			s.listChangingChannel <- true
 		}
-		return &eventmanager.DeleteEventResponse{
+		return &eventmanager.EventIdResponse{
 			EventId: req.EventId,
 		}, nil
 	}
-	return nil, nil
+	return nil, errors.New("not found")
 }
 
 func (s *Server) CheckSenderEventExistence(sid int64, eid int64) bool {
@@ -214,8 +212,8 @@ func (s *Server) CheckSenderEventExistence(sid int64, eid int64) bool {
 	return exist
 }
 
-func ArchiveEvent(event models.Event) *eventmanager.GetEventsResponse {
-	return &eventmanager.GetEventsResponse{
+func ArchiveEvent(event models.Event) *eventmanager.EventResponse {
+	return &eventmanager.EventResponse{
 		SenderId: event.SenderId,
 		EventId:  event.EventId,
 		Time:     event.Time,

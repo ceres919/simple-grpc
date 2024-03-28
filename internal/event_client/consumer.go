@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func notifyer(event *eventmanager.GetEventsResponse, routingKey string, queueName string) {
+func notifyer(event *eventmanager.EventResponse, routingKey string, queueName string) {
 	const (
 		exchange    = "event.ex"
 		reconnDelay = 5
@@ -146,7 +146,13 @@ func notifyer(event *eventmanager.GetEventsResponse, routingKey string, queueNam
 			}
 			fmt.Println("Notification!")
 			t := time.UnixMilli(event.Time).Local().Format(time.DateTime)
-			fmt.Printf("Event {\n  senderId: %d\n  eventId: %d\n  time: %s\n  name: '%s'\n}\n> ", event.SenderId, event.EventId, t, event.Name)
+			fmt.Printf(
+				"Event {\n  senderId: %d\n  eventId: %d\n  time: %s\n  name: '%s'\n}\n> ",
+				event.SenderId,
+				event.EventId,
+				t,
+				event.Name,
+			)
 		}
 	}()
 

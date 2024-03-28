@@ -15,7 +15,7 @@ func RunEventsClient(sender_id int64, client eventmanager.EventsClient) {
 	routingKey := strconv.Itoa(int(sender_id))
 	queueName := strconv.Itoa(int(sender_id))
 
-	go notifyer(&eventmanager.GetEventsResponse{}, routingKey, queueName)
+	go notifyer(&eventmanager.EventResponse{}, routingKey, queueName)
 
 	for {
 		var call string
