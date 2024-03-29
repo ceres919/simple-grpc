@@ -3,19 +3,19 @@ package eventserver
 import (
 	"container/list"
 	"context"
+	"errors"
 	"sync"
 	"time"
 
-	"errors"
+	"github.com/google/uuid"
 
 	"github.com/ceres919/simple-grpc/internal/models"
 	eventmanager "github.com/ceres919/simple-grpc/pkg/api/protobuf"
-	uid "github.com/hitoshi44/go-uid64"
 )
 
 type Server struct {
 	eventmanager.UnimplementedEventsServer
-	eventsMap           map[int64]map[int64]*list.Element
+	eventsMap           map[int64]map[uuid.UUID]*list.Element
 	eventsList          *list.List
 	eventsChannel       chan *models.Event
 	listChangingChannel chan bool
@@ -26,7 +26,7 @@ func NewServerEvent(events ...*eventmanager.MakeEventRequest) *Server {
 	publisherChan := make(chan *models.Event, 10000)
 	publish(publisherChan)
 	serv := Server{
-		eventsMap:           make(map[int64]map[int64]*list.Element),
+		eventsMap:           make(map[int64]map[uuid.UUID]*list.Element),
 		eventsList:          list.New(),
 		eventsChannel:       publisherChan,
 		listChangingChannel: make(chan bool, 1),
@@ -97,14 +97,14 @@ func (s *Server) timerQueue() {
 func (s *Server) MakeEvent(ctx context.Context, req *eventmanager.MakeEventRequest) (*eventmanager.EventIdResponse, error) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
-	g, _ := uid.NewGenerator(0)
-	event_id, _ := g.Gen()
-	event := &models.Event{SenderId: req.SenderId, EventId: event_id.ToInt(), Time: req.Time, Name: req.Name}
+	event_id := uuid.New()
+
+	event := &models.Event{SenderId: req.SenderId, EventId: event_id, Time: req.Time, Name: req.Name}
 	var eventPtr *list.Element
 	_, existence := s.eventsMap[req.SenderId]
 
 	if !existence {
-		s.eventsMap[req.SenderId] = make(map[int64]*list.Element)
+		s.eventsMap[req.SenderId] = make(map[uuid.UUID]*list.Element)
 	}
 	if s.eventsList.Len() == 0 {
 		eventPtr = s.eventsList.PushBack(event)
@@ -123,8 +123,9 @@ func (s *Server) MakeEvent(ctx context.Context, req *eventmanager.MakeEventReque
 		}
 	}
 	s.eventsMap[event.SenderId][event.EventId] = eventPtr
+	eventIdBytes, _ := event_id.MarshalBinary()
 	return &eventmanager.EventIdResponse{
-		EventId: event_id.ToInt(),
+		EventId: eventIdBytes,
 	}, nil
 }
 
@@ -133,12 +134,14 @@ func (s *Server) GetEvent(ctx context.Context, req *eventmanager.GetEventRequest
 	defer s.mut.Unlock()
 	_, exist := s.eventsMap[req.SenderId]
 	if exist {
-		eventPtr, existence := s.eventsMap[req.SenderId][req.EventId]
+		eventId, _ := uuid.FromBytes(req.EventId)
+		eventPtr, existence := s.eventsMap[req.SenderId][eventId]
 		if existence {
 			event := eventPtr.Value.(*models.Event)
+			eventIdBytes, _ := event.EventId.MarshalBinary()
 			return &eventmanager.EventResponse{
 				SenderId: event.SenderId,
-				EventId:  event.EventId,
+				EventId:  eventIdBytes,
 				Time:     event.Time,
 				Name:     event.Name,
 			}, nil
@@ -186,36 +189,41 @@ func (s *Server) DeleteEvent(
 	if !existence {
 		return nil, errors.New("not found")
 	}
-	eventPtr, existence := s.eventsMap[req.SenderId][req.EventId]
+	eventId, _ := uuid.FromBytes(req.EventId)
+	eventPtr, existence := s.eventsMap[req.SenderId][eventId]
 	if existence {
-		delete(s.eventsMap[req.SenderId], req.EventId)
+		delete(s.eventsMap[req.SenderId], eventId)
 		frontItem := s.eventsList.Front().Value
+		event := eventPtr.Value.(*models.Event)
+		eventIdBytes, _ := event.EventId.MarshalBinary()
 		s.eventsList.Remove(eventPtr)
 		if eventPtr.Value == frontItem {
 			s.listChangingChannel <- true
 		}
 		return &eventmanager.EventIdResponse{
-			EventId: req.EventId,
+			EventId: eventIdBytes,
 		}, nil
 	}
 	return nil, errors.New("not found")
 }
 
-func (s *Server) CheckSenderEventExistence(sid int64, eid int64) bool {
+func (s *Server) CheckSenderEventExistence(sid int64, eid []byte) bool {
 	s.mut.Lock()
 	defer s.mut.Unlock()
 	_, exist := s.eventsMap[sid]
 	if !exist {
 		return false
 	}
-	_, exist = s.eventsMap[sid][eid]
+	eventId, _ := uuid.FromBytes(eid)
+	_, exist = s.eventsMap[sid][eventId]
 	return exist
 }
 
 func ArchiveEvent(event models.Event) *eventmanager.EventResponse {
+	eIdBytes, _ := event.EventId.MarshalBinary()
 	return &eventmanager.EventResponse{
 		SenderId: event.SenderId,
-		EventId:  event.EventId,
+		EventId:  eIdBytes,
 		Time:     event.Time,
 		Name:     event.Name,
 	}

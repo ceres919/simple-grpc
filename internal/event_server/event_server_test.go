@@ -9,6 +9,7 @@ import (
 
 	"github.com/ceres919/simple-grpc/internal/models"
 	eventmanager "github.com/ceres919/simple-grpc/pkg/api/protobuf"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )
@@ -53,8 +54,8 @@ func TestServer_MakeEvent(t *testing.T) {
 	wg.Wait()
 }
 
-func mockEventMaker(s *Server, givenTime int64) (*map[int64]map[string]int64, error) {
-	eventsIdMap := make(map[int64]map[string]int64)
+func mockEventMaker(s *Server, givenTime int64) (*map[int64]map[string][]byte, error) {
+	eventsIdMap := make(map[int64]map[string][]byte)
 	oneMonthLater := time.UnixMilli(givenTime).AddDate(0, 1, 0).UnixMilli()
 	eventsData := []struct {
 		SenderId int64
@@ -76,7 +77,7 @@ func mockEventMaker(s *Server, givenTime int64) (*map[int64]map[string]int64, er
 
 		_, existence := eventsIdMap[eventData.SenderId]
 		if !existence {
-			eventsIdMap[eventData.SenderId] = make(map[string]int64)
+			eventsIdMap[eventData.SenderId] = make(map[string][]byte)
 		}
 		eventsIdMap[eventData.SenderId][eventData.Name] = e.EventId
 		if err != nil {
@@ -87,9 +88,9 @@ func mockEventMaker(s *Server, givenTime int64) (*map[int64]map[string]int64, er
 	return &eventsIdMap, nil
 }
 
-func setupTest(t *testing.T, currentTime time.Time) (*Server, *map[int64]map[string]int64) {
+func setupTest(t *testing.T, currentTime time.Time) (*Server, *map[int64]map[string][]byte) {
 	s := NewServerEvent()
-	var idMap *map[int64]map[string]int64
+	var idMap *map[int64]map[string][]byte
 	t.Run("Mocking events", func(t *testing.T) {
 		var err error
 		idMap, err = mockEventMaker(s, currentTime.UnixMilli())
@@ -118,7 +119,7 @@ func TestServer_GetEvent(t *testing.T) {
 		name: "Test 1",
 		req: &eventmanager.GetEventRequest{
 			SenderId: 7,
-			EventId:  78787,
+			EventId:  []byte("78787-jgnj"),
 		},
 		want:    nil,
 		wantErr: fmt.Errorf("not found"),
@@ -294,7 +295,7 @@ func TestServer_DeleteEvent(t *testing.T) {
 		name: "Test 1",
 		req: &eventmanager.DeleteEventRequest{
 			SenderId: 7,
-			EventId:  78787,
+			EventId:  []byte("tyyh-8787"),
 		},
 		want:    nil,
 		wantErr: fmt.Errorf("not found"),
@@ -326,7 +327,7 @@ func TestServer_DeleteEvent(t *testing.T) {
 		name: "Test 5",
 		req: &eventmanager.DeleteEventRequest{
 			SenderId: 1,
-			EventId:  13048007,
+			EventId:  []byte("13048007"),
 		},
 		want:    nil,
 		wantErr: fmt.Errorf("not found"),
@@ -415,7 +416,7 @@ func TestServer_CheckSenderEventExistence(t *testing.T) {
 	type test struct {
 		name      string
 		sender_id int64
-		event_id  int64
+		event_id  []byte
 		want      bool
 	}
 	var tests []test
@@ -438,12 +439,12 @@ func TestServer_CheckSenderEventExistence(t *testing.T) {
 	}, test{
 		name:      "Test 4",
 		sender_id: 7,
-		event_id:  764803323,
+		event_id:  []byte("764tyy803323"),
 		want:      false,
 	}, test{
 		name:      "Test 5",
 		sender_id: 2,
-		event_id:  100344,
+		event_id:  []byte("10tytyhj0344"),
 		want:      false,
 	}, test{
 		name:      "Test 6",
@@ -476,17 +477,19 @@ func TestArchiveEvent(t *testing.T) {
 	}
 	var tests []test
 	for i := 0; i < 100; i++ {
+		eId := uuid.New()
+		eByte, _ := eId.MarshalBinary()
 		tests = append(tests, test{
 			name: fmt.Sprintf("Test %d", i),
 			req: models.Event{
 				SenderId: int64(i),
-				EventId:  int64(i),
+				EventId:  eId,
 				Time:     currentTime,
 				Name:     fmt.Sprintf("User %d", i),
 			},
 			want: &eventmanager.EventResponse{
 				SenderId: int64(i),
-				EventId:  int64(i),
+				EventId:  eByte,
 				Time:     currentTime,
 				Name:     fmt.Sprintf("User %d", i),
 			},

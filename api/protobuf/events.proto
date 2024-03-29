@@ -19,12 +19,12 @@ message MakeEventRequest {
 
 message GetEventRequest {
   int64 senderId = 1;
-  int64 eventId = 2;
+  bytes eventId = 2;
 }
 
 message DeleteEventRequest {
   int64 senderId = 1;
-  int64 eventId = 2;
+  bytes eventId = 2;
 }
 
 message GetEventsRequest {
@@ -34,12 +34,12 @@ message GetEventsRequest {
 }
 
 message EventIdResponse {
-  int64 eventId = 1;
+  bytes eventId = 1;
 }
 
 message EventResponse {
   int64 senderId = 1;
-  int64 eventId = 2;
+  bytes eventId = 2;
   int64 time = 3;
   string name = 4;
 }

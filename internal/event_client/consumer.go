@@ -147,7 +147,7 @@ func notifyer(event *eventmanager.EventResponse, routingKey string, queueName st
 			fmt.Println("Notification!")
 			t := time.UnixMilli(event.Time).Local().Format(time.DateTime)
 			fmt.Printf(
-				"Event {\n  senderId: %d\n  eventId: %d\n  time: %s\n  name: '%s'\n}\n> ",
+				"Event {\n  senderId: %d\n  eventId: %s\n  time: %s\n  name: '%s'\n}\n> ",
 				event.SenderId,
 				event.EventId,
 				t,
