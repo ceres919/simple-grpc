@@ -147,6 +147,22 @@ func TestServer_GetEvent(t *testing.T) {
 		},
 		want:    &eventmanager.EventResponse{},
 		wantErr: nil,
+	}, test{
+		name: "Test 5",
+		req: &eventmanager.GetEventRequest{
+			SenderId: 3,
+			EventId:  idMap[2]["User2"],
+		},
+		want:    nil,
+		wantErr: fmt.Errorf("not found"),
+	}, test{
+		name: "Test 6",
+		req: &eventmanager.GetEventRequest{
+			SenderId: 1,
+			EventId:  []byte("78787-jgnj"),
+		},
+		want:    nil,
+		wantErr: fmt.Errorf("not found"),
 	})
 
 	var wg sync.WaitGroup
