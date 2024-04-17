@@ -5,6 +5,7 @@ import (
 	"time"
 
 	eventmanager "github.com/ceres919/simple-grpc/pkg/api/protobuf"
+	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"google.golang.org/protobuf/proto"
 )
@@ -146,10 +147,11 @@ func notifyer(event *eventmanager.EventResponse, routingKey string, queueName st
 			}
 			fmt.Println("Notification!")
 			t := time.UnixMilli(event.Time).Local().Format(time.DateTime)
+			eId, _ := uuid.FromBytes(event.EventId)
 			fmt.Printf(
 				"Event {\n  senderId: %d\n  eventId: %s\n  time: %s\n  name: '%s'\n}\n> ",
 				event.SenderId,
-				event.EventId,
+				eId.String(),
 				t,
 				event.Name,
 			)
