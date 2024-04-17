@@ -2,9 +2,9 @@ package eventclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"strconv"
 	"time"
 
@@ -13,194 +13,194 @@ import (
 )
 
 type ClientManager interface {
-	ClientMakeEvent(client eventmanager.EventsClient)
-	ClientGetEvent(client eventmanager.EventsClient)
-	ClientGetEvents(client eventmanager.EventsClient)
-	ClientDeleteEvent(client eventmanager.EventsClient)
+	ClientMakeEvent(reader io.Reader, writer io.Writer) error
+	ClientGetEvent(reader io.Reader, writer io.Writer) error
+	ClientGetEvents(reader io.Reader, writer io.Writer) error
+	ClientDeleteEvent(reader io.Reader, writer io.Writer) error
 }
 
 type manager struct {
+	sender_id int64
+	client    eventmanager.EventsClient
 }
 
-func RunEventsClient(sender_id int64, client eventmanager.EventsClient) {
+func newClientManager(id int64, cli eventmanager.EventsClient) *manager {
+	return &manager{
+		sender_id: id,
+		client:    cli,
+	}
+}
+
+func RunEventsClient(sender_id int64, client eventmanager.EventsClient, reader io.Reader, writer io.Writer) {
 	routingKey := strconv.Itoa(int(sender_id))
 	queueName := strconv.Itoa(int(sender_id))
-	manager := manager{}
+	manager := newClientManager(sender_id, client)
 	go notifyer(&eventmanager.EventResponse{}, routingKey, queueName)
-
 	for {
 		var call string
-		fmt.Scan(&call)
+		fmt.Fscan(reader, &call)
 		switch call {
 		case "MakeEvent":
 			{
-				var event_time, event_date, name string
-				fmt.Scan(&event_date, &event_time, &name)
-				manager.ClientMakeEvent(client, sender_id, event_time, event_date, name)
-				//eventsClientMakeEvent(client, sender_id, event_time, event_date, name)
-				// localTime, _ := time.ParseInLocation(time.DateTime, fmt.Sprintf("%s %s", event_date, event_time), time.Local)
-				// datetime := localTime.UTC()
-				// res, err := client.MakeEvent(context.Background(), &eventmanager.MakeEventRequest{
-				// 	SenderId: sender_id,
-				// 	Time:     datetime.UnixMilli(),
-				// 	Name:     name,
-				// })
-				// if err != nil {
-				// 	log.Fatal(err)
-				// }
-				// fmt.Println("eventId: ", res.EventId)
+				err := manager.ClientMakeEvent(reader, writer)
+				if err != nil {
+					fmt.Fprint(writer, err)
+				}
 			}
 		case "GetEvent":
 			{
-				var event_id string
-				fmt.Scan(&event_id)
-
-				manager.ClientGetEvent(client, sender_id, event_id)
-				//eventsClientGetEvent(client, sender_id, event_id)
-				// res, _ := client.GetEvent(context.Background(), &eventmanager.GetEventRequest{
-				// 	SenderId: sender_id,
-				// 	EventId:  event_id,
-				// })
-				// if res == nil {
-				// 	fmt.Println("No such event")
-				// } else {
-				// 	timeEvent := time.UnixMilli(res.Time).Local().Format(time.DateTime)
-				// 	fmt.Printf("Event {\n\tsenderId: %d\n\teventId: %d\n\ttime: %s\n\tname: %s\n}\n", res.SenderId, res.EventId, timeEvent, res.Name)
-				// }
+				err := manager.ClientGetEvent(reader, writer)
+				if err != nil {
+					fmt.Fprint(writer, err)
+				}
 			}
 		case "GetEvents":
 			{
-				var (
-					fromDate string
-					fromTime string
-					toDate   string
-					toTime   string
-				)
-				fmt.Scan(&fromDate, &fromTime, &toDate, &toTime)
-				manager.ClientGetEvents(client, sender_id, fromDate, fromTime, toDate, toTime)
-				//eventsClientGetEvents(client, sender_id, fromDate, fromTime, toDate, toTime)
-				// startTime, _ := time.ParseInLocation(time.DateTime, fmt.Sprintf("%s %s", fromDate, fromTime), time.Local)
-				// endTime, _ := time.ParseInLocation(time.DateTime, fmt.Sprintf("%s %s", toDate, toTime), time.Local)
-
-				// stream, err := client.GetEvents(context.Background(), &eventmanager.GetEventsRequest{
-				// 	SenderId: sender_id,
-				// 	FromTime: startTime.UTC().UnixMilli(),
-				// 	ToTime:   endTime.UTC().UnixMilli(),
-				// })
-				// if err != nil {
-				// 	fmt.Println("No such events")
-				// } else {
-				// 	for i := 0; ; i++ {
-				// 		res, err := stream.Recv()
-				// 		if err == io.EOF {
-				// 			if i == 0 {
-				// 				fmt.Println("No such events")
-				// 			}
-				// 			break
-				// 		}
-				// 		t := time.UnixMilli(res.Time).Local().Format(time.DateTime)
-				// 		fmt.Printf("Event {\n\tsenderId: %d\n\teventId: %d\n\ttime: %s\n\tname: '%s'\n}\n", res.SenderId, res.EventId, t, res.Name)
-				// 	}
-				// }
+				err := manager.ClientGetEvents(reader, writer)
+				if err != nil {
+					fmt.Fprint(writer, err)
+				}
 			}
 		case "DeleteEvent":
 			{
-				var event_id string
-				fmt.Scan(&event_id)
-				manager.ClientDeleteEvent(client, sender_id, event_id)
-				//eventsClientDeleteEvent(client, sender_id, event_id)
-				// res, err := client.DeleteEvent(context.Background(), &eventmanager.DeleteEventRequest{
-				// 	SenderId: sender_id,
-				// 	EventId:  event_id,
-				// })
-				// if err != nil {
-				// 	fmt.Println("Not Found")
-				// }
-				// fmt.Println("eventId: ", res.EventId)
+				err := manager.ClientDeleteEvent(reader, writer)
+				if err != nil {
+					fmt.Fprint(writer, err)
+				}
 			}
 
 		case "exit":
 			return
+
+		default:
+			{
+				fmt.Fprintln(writer, "undefined procedure name")
+			}
 		}
 	}
-
 }
 
-func (m *manager) ClientMakeEvent(client eventmanager.EventsClient, sender_id int64, event_time, event_date, name string) {
-	localTime, _ := time.ParseInLocation(time.DateTime, fmt.Sprintf("%s %s", event_date, event_time), time.Local)
+func (m *manager) ClientMakeEvent(reader io.Reader, writer io.Writer) error {
+	var event_time, event_date, name string
+	_, err := fmt.Fscan(reader, &event_date, &event_time, &name)
+	if err != nil {
+		return errors.New("wrong number of arguments")
+	}
+	localTime, err := time.ParseInLocation(time.DateTime, fmt.Sprintf("%s %s", event_date, event_time), time.Local)
+	if err != nil {
+		return errors.New("wrong date format")
+	}
 	datetime := localTime.UTC()
-	res, err := client.MakeEvent(context.Background(), &eventmanager.MakeEventRequest{
-		SenderId: sender_id,
+	res, err := m.client.MakeEvent(context.Background(), &eventmanager.MakeEventRequest{
+		SenderId: m.sender_id,
 		Time:     datetime.UnixMilli(),
 		Name:     name,
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	eUuid, _ := uuid.FromBytes(res.EventId)
-	fmt.Println("eventId: ", eUuid.String())
+	eId, err := uuid.FromBytes(res.EventId)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(writer, "eventId:", eId.String())
+	return nil
 }
 
-func (m *manager) ClientGetEvent(client eventmanager.EventsClient, sender_id int64, event_id string) {
-	eId, _ := uuid.Parse(event_id)
+func (m *manager) ClientGetEvent(reader io.Reader, writer io.Writer) error {
+	var event_id string
+	_, err := fmt.Fscan(reader, &event_id)
+	if err != nil {
+		return errors.New("wrong number of arguments")
+	}
+	eId, err := uuid.Parse(event_id)
+	if err != nil {
+		return errors.New("bad event id")
+	}
 	eIdBytes, _ := eId.MarshalBinary()
-	res, _ := client.GetEvent(context.Background(), &eventmanager.GetEventRequest{
-		SenderId: sender_id,
+	res, err := m.client.GetEvent(context.Background(), &eventmanager.GetEventRequest{
+		SenderId: m.sender_id,
 		EventId:  eIdBytes,
 	})
-	if res == nil {
-		fmt.Println("No such event")
-	} else {
-		timeEvent := time.UnixMilli(res.Time).Local().Format(time.DateTime)
-		eventId, _ := uuid.FromBytes(res.EventId)
-		fmt.Printf("Event {\n\tsenderId: %d\n\teventId: %s\n\ttime: %s\n\tname: %s\n}\n", res.SenderId, eventId.String(), timeEvent, res.Name)
+	if res == nil && err != nil {
+		fmt.Fprintln(writer, "event not found")
+		return nil
 	}
+	timeEvent := time.UnixMilli(res.Time).Local().Format(time.DateTime)
+	eventId, _ := uuid.FromBytes(res.EventId)
+	fmt.Fprintf(
+		writer,
+		"event {\n\tsenderId: %d\n\teventId: %s\n\ttime: %s\n\tname: %s\n}\n",
+		res.SenderId,
+		eventId.String(),
+		timeEvent,
+		res.Name,
+	)
+	return nil
 }
 
-func (m *manager) ClientGetEvents(
-	client eventmanager.EventsClient,
-	sender_id int64,
-	fromDate string,
-	fromTime string,
-	toDate string,
-	toTime string,
-) {
-	startTime, _ := time.ParseInLocation(time.DateTime, fmt.Sprintf("%s %s", fromDate, fromTime), time.Local)
-	endTime, _ := time.ParseInLocation(time.DateTime, fmt.Sprintf("%s %s", toDate, toTime), time.Local)
-
-	stream, err := client.GetEvents(context.Background(), &eventmanager.GetEventsRequest{
-		SenderId: sender_id,
+func (m *manager) ClientGetEvents(reader io.Reader, writer io.Writer) error {
+	var (
+		fromDate string
+		fromTime string
+		toDate   string
+		toTime   string
+	)
+	_, err := fmt.Fscan(reader, &fromDate, &fromTime, &toDate, &toTime)
+	if err != nil {
+		return errors.New("wrong number of arguments")
+	}
+	startTime, err := time.ParseInLocation(time.DateTime, fmt.Sprintf("%s %s", fromDate, fromTime), time.Local)
+	if err != nil {
+		return errors.New("wrong date format")
+	}
+	endTime, err := time.ParseInLocation(time.DateTime, fmt.Sprintf("%s %s", toDate, toTime), time.Local)
+	if err != nil {
+		return errors.New("wrong date format")
+	}
+	stream, err := m.client.GetEvents(context.Background(), &eventmanager.GetEventsRequest{
+		SenderId: m.sender_id,
 		FromTime: startTime.UTC().UnixMilli(),
 		ToTime:   endTime.UTC().UnixMilli(),
 	})
 	if err != nil {
-		fmt.Println("No such events")
-	} else {
-		for i := 0; ; i++ {
-			res, err := stream.Recv()
-			if err == io.EOF {
-				if i == 0 {
-					fmt.Println("No such events")
-				}
-				break
-			}
-			t := time.UnixMilli(res.Time).Local().Format(time.DateTime)
-			eventId, _ := uuid.FromBytes(res.EventId)
-			fmt.Printf("Event {\n\tsenderId: %d\n\teventId: %s\n\ttime: %s\n\tname: '%s'\n}\n", res.SenderId, eventId.String(), t, res.Name)
-		}
+		fmt.Fprintln(writer, "events not found")
+		return nil
 	}
+
+	for {
+		res, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		t := time.UnixMilli(res.Time).Local().Format(time.DateTime)
+		eventId, _ := uuid.FromBytes(res.EventId)
+		fmt.Fprintf(writer, "event {\n\tsenderId: %d\n\teventId: %s\n\ttime: %s\n\tname: '%s'\n}\n", res.SenderId, eventId.String(), t, res.Name)
+	}
+
+	return nil
 }
 
-func (m *manager) ClientDeleteEvent(client eventmanager.EventsClient, sender_id int64, event_id string) {
-	eId, _ := uuid.Parse(event_id)
+func (m *manager) ClientDeleteEvent(reader io.Reader, writer io.Writer) error {
+	var event_id string
+	_, err := fmt.Fscan(reader, &event_id)
+	if err != nil {
+		return errors.New("wrong number of arguments")
+	}
+	eId, err := uuid.Parse(event_id)
+	if err != nil {
+		return errors.New("bad event id")
+	}
 	eIdBytes, _ := eId.MarshalBinary()
-	res, err := client.DeleteEvent(context.Background(), &eventmanager.DeleteEventRequest{
-		SenderId: sender_id,
+	res, err := m.client.DeleteEvent(context.Background(), &eventmanager.DeleteEventRequest{
+		SenderId: m.sender_id,
 		EventId:  eIdBytes,
 	})
 	if err != nil {
-		fmt.Println("Not Found")
+		fmt.Fprintln(writer, "event not found")
+	} else {
+		eId, _ := uuid.FromBytes(res.EventId)
+		fmt.Fprintln(writer, "eventId:", eId.String())
 	}
-	eUuid, _ := uuid.FromBytes(res.EventId)
-	fmt.Println("eventId: ", eUuid.String())
+	return nil
 }

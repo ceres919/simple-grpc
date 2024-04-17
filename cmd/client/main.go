@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"sync"
 
@@ -37,7 +38,7 @@ func main() {
 	go func() {
 		defer wg.Done()
 		int_sender_id, _ := strconv.ParseInt(sender_id, 10, 64)
-		eventclient.RunEventsClient(int_sender_id, client)
+		eventclient.RunEventsClient(int_sender_id, client, os.Stdin, os.Stdout)
 	}()
 	defer conn.Close()
 
